@@ -24,7 +24,7 @@ impl <T> CrcOptions <T> {
 }
 
 // http://www.sunshine2k.de/articles/coding/crc/understanding_crc.html#ch41
-// Reference implementation
+// ^ Reference implementation
 impl CrcOptions <u8> {
     /// Encode data using CRC8 encoding
     /// 

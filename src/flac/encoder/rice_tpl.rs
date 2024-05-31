@@ -33,7 +33,7 @@ impl RiceEncoderOptions {
     /// 
     /// The default minimum partition order is zero
     fn min_rice_partition_order() -> u8 {
-        todo!()
+        0
     }
 
     /// Get the maximum partition order
@@ -43,8 +43,23 @@ impl RiceEncoderOptions {
     /// 1 bit in the block size. Note that odd-sized block sizes can only
     /// have a partition order of 0 as the number of partitions should be
     /// a power of two.
+    /// https://github.com/xiph/flac/blob/master/src/libFLAC/format.c#L540``
+    /// ^ Reference Implementation
     fn max_rice_partition_order(mut block_size: u64) -> u8 {
-        todo!()
+        // The maximum Rice partition order permitted by the format.
+        const FLAC_MAX_RICE_PARTITION_ORDER: u8 = 15; 
+
+        let mut max_rice_partition_order = 0;
+        
+        // returns the index of the least significant 1 bit
+        while block_size & 1 == 0 {
+            max_rice_partition_order += 1;
+            block_size >>= 1;
+        }
+        
+        // add 1 to get location
+        max_rice_partition_order += 1;
+        max_rice_partition_order.min(FLAC_MAX_RICE_PARTITION_ORDER)
     }
 
     /// Compute the best partition order and best Rice parameters for each partition
@@ -103,8 +118,64 @@ impl RiceEncoderOptions {
     /// Note that the contents are _not_ ensured to be byte-aligned. Hence, this method returns
     /// the Rice-encoded byte vector containing the number of extra unused bits at the last element.
     pub fn encode(rice_param: u8, residuals: &Vec <i64>) -> RiceEncodedStream {
-        todo!()
+        let zigzag_residuals = residuals.iter().map(|&num| RiceEncoderOptions::zigzag(num)).collect();
+
+        for residual in zigzag_residuals {
+            let res = RiceEncoderOptions::encode_residual(residual, rice_param);
+        }
     }
+
+    pub fn encode_residual(residual: u64, rice_param: u8) -> u64 {
+        // Calculate K, U, and B
+        let K: u64 = RiceEncoderOptions::min_bits_required(rice_param);
+        let mut u = residual >> K;
+        let B = residual & ((rice_param - 1) as u64);
+    
+        let mut unary_code = String::new();
+        for _ in 0..=u {
+            unary_code.push('1');
+        }
+        unary_code.push('0');
+        
+        let U = RiceEncoderOptions::unary_to_u64(&unary_code);
+        // Concatenate unary and binary codes
+        let result = (U << K) | B;
+    
+        result
+    }
+
+    fn min_bits_required(num: u8) -> u64 {
+        if num == 0 {
+            return 1;
+        }
+        
+        let mut count = 0;
+        let mut n = num as u64;
+        
+        while n != 0 {
+            count += 1;
+            n >>= 1;
+        }
+        
+        count
+    }
+    
+    fn unary_to_u64(unary_code: &str) -> u64 {
+        let mut count = 0;
+        let mut max_count = 0;
+    
+        for c in unary_code.chars() {
+            if c == '1' {
+                count += 1;
+            } else {
+                max_count = max_count.max(count);
+                count = 0;
+            }
+        }
+    
+        max_count
+    }
+    
 
     /// Encode residuals into a partitioned Rice-encoded stream
     /// 
@@ -125,8 +196,10 @@ impl RiceEncoderOptions {
 
     /// Convert an integer into its zigzag encoding. With this encoding, all
     /// positive numbers are even and all negative numbers are odd.
+    /// https://docs.rs/residua-zigzag/latest/zigzag/#zigzag-encoding
+    /// ^ Reference implementation
     pub fn zigzag(num: i64) -> u64 {
-        todo!()
+        ((num << 1) ^ (num >> 63)) as u64
     }
 }
 
@@ -173,5 +246,14 @@ mod tests {
 
         assert_eq!(rice_enc_stream.stream, out_vec_ans);
         assert_eq!(rice_enc_stream.extra_bits_len, 1);
+    }
+
+    #[test]
+    fn max_rice_partition_order_test() {
+        let input_block_size = 192;
+        let expected_max_partition_order = 7;
+
+        let result = RiceEncoderOptions::max_rice_partition_order(input_block_size);
+        assert_eq!(result, expected_max_partition_order, input_block_size);
     }
 }

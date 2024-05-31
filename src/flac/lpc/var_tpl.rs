@@ -8,7 +8,21 @@ impl VarPredictor {
     /// the output contains three elements corresponding to R[0] until R[3],
     /// respectively
     pub fn get_autocorrelation(samples: &Vec <i64>, max_lag: u8) -> Vec <f64> {
-        todo!()
+        // Initialize autocorrelation vector
+        let mut autoc = vec![0.0; max_lag as usize + 1];
+
+        // Iterate over each lag
+        for l in 0..=max_lag {
+            let mut d = 0.0;
+            // Compute autocorrelation for current lag
+            for i in l..samples.len() as u8{
+                d += samples[i as usize] as f64 * samples[(i - l) as usize] as f64;
+            }
+            // Store autocorrelation for current lag
+            autoc[l as usize] = d;
+        }
+
+        autoc
     }
 
     /// Get the predictor coefficients
@@ -18,7 +32,31 @@ impl VarPredictor {
     /// less than `autoc.len()`. The coefficients are computed using the Levinson-Durbin
     /// algorithm.
     pub fn get_predictor_coeffs(autoc: &Vec <f64>, predictor_order: u8) -> Vec <f64> {
-        todo!()
+        let mut lpc: Vec<f64> = vec![0.0; predictor_order as usize];
+        let mut err = autoc[0];
+    
+        for i in 0..predictor_order {
+            let mut r = -autoc[(i + 1) as usize];
+            for j in 0..i {
+                r -= lpc[j as usize] * autoc[(i - j) as usize];
+            }
+            r /= err;
+    
+            lpc[i as usize] = r;
+    
+            for j in 0..(i >> 1) {
+                let tmp = lpc[j as usize];
+                lpc[j as usize] += r * lpc[(i - 1 - j) as usize];
+                lpc[(i - 1 - j) as usize] += r * tmp;
+            }
+            if i & 1 == 1 {
+                lpc[(i >> 1) as usize] += lpc[(i >> 1) as usize] * r;
+            }
+    
+            err *= 1.0 - r * r;
+        }
+    
+        lpc
     }
 
     /// Get a the list of LPC coefficients until some provided predictor order inclusive.
@@ -98,7 +136,25 @@ impl VarPredictor {
     /// |   > 16    |    1152    |          13             |
     /// |   > 16    |     any    |          14             |
     pub fn get_best_precision(bps: u8, block_size: u64) -> u8 {
-        todo!()
+        if bps < 16 {
+            (2 + bps / 2).max(1)
+        } else if bps == 16 {
+            match block_size {
+                192 => 7,
+                384 => 8,
+                576 => 9,
+                1152 => 10,
+                2304 => 11,
+                4608 => 12,
+                _ => 13,
+            }
+        } else {
+            match block_size {
+                384 => 12,
+                1152 => 13,
+                _ => 14,
+            }
+        }
     }
 }
 

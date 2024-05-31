@@ -48,6 +48,8 @@ impl FixedPredictor {
     /// `None` is returned if an error occurs in the function. This includes whether
     /// the predictor order provided is not within 0 and 4 inclusive and whether the
     /// size of `data` is less than the predictor order.
+    /// https://github.com/xiph/flac/blob/master/src/libFLAC/fixed.c#L470
+    /// ^ Reference Implementation
     pub fn get_residuals(data: &Vec <i64>, predictor_order: u8) -> Option <Vec <i64>> {
         let data_len = data.len();
 
