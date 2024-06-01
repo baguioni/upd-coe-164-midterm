@@ -125,16 +125,78 @@ mod tests {
             -6306, -6032, -6299, -6165,
         ];
 
+        //Get residuals
         let out_vec_ans = vec![
             3194, -1297, 1228,
             -943, 952, -696, 768,
             -524, 599, -401, -13172,
             -316, 274, -267, 134,
         ];
-
         let ans = FixedPredictor::get_residuals(&in_vec, 1);
-
         assert!(ans.is_some());
         assert_eq!(ans.unwrap(), out_vec_ans);
+        
+        //Get Best Predictor
+        let out_best_predictor_ans = 1;
+        let out_best_predictor = FixedPredictor::best_predictor_order(&in_vec);
+        assert!(out_best_predictor.is_some());
+        assert_eq!(out_best_predictor.unwrap(), out_best_predictor_ans);
+    }
+    
+    #[test]
+    fn sample_ietf_02b() {
+        let in_vec = vec![
+            1785, -1980, 1723, -5809, 
+            1937, -2478, 7531, -9531, 
+            7648, -4289, 3964, -1470, 
+            9864, -2478, 8754, -2579,
+            8652, 2446, -9999, 4321, 
+            -5643,
+        ];
+
+        //Get residuals
+        let out_vec_ans = vec![
+            45216, -53952, 54024, -68080, 
+            102807, -124669, 112663, -83183, 
+            64332, -70899, 87694, -93389, 
+            91268, -85130, 51199, 21806, 
+            -84053,
+        ];
+        let ans = FixedPredictor::get_residuals(&in_vec, 4);
+        assert!(ans.is_some());
+        assert_eq!(ans.unwrap(), out_vec_ans);
+        
+        //Get Best Predictor
+        let out_best_predictor_ans = 4;
+        let out_best_predictor = FixedPredictor::best_predictor_order(&in_vec);
+        assert!(out_best_predictor.is_some());
+        assert_eq!(out_best_predictor.unwrap(), out_best_predictor_ans);
+    }
+    
+        #[test]
+    fn sample_ietf_02c() {
+        let in_vec = vec![
+            39746, -85234, 11258, 93475, 
+            60984, -76329, 51897, 23546, 
+            -69147, 42038, -17659, -84320, 
+            96581, -74206, -31985, -58741,
+        ];
+
+        //Get residuals
+        let out_vec_ans = vec![
+            -235747, -100433, 9886, 370361, 
+            -422116, 92235, 268220, -374760, 
+            163918, 254526, -599250, 564696, 
+            -281985,
+        ];
+        let ans = FixedPredictor::get_residuals(&in_vec, 3);
+        assert!(ans.is_some());
+        assert_eq!(ans.unwrap(), out_vec_ans);
+        
+        //Get Best Predictor
+        let out_best_predictor_ans = 3;
+        let out_best_predictor = FixedPredictor::best_predictor_order(&in_vec);
+        assert!(out_best_predictor.is_some());
+        assert_eq!(out_best_predictor.unwrap(), out_best_predictor_ans);
     }
 }
