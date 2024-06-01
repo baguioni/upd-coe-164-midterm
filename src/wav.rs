@@ -3,8 +3,19 @@ use std::fs::File;
 use std::path::Path;
 use std::error;
 use std::io::{self, Read, Seek, SeekFrom};
-
 use byteorder::{ByteOrder, LittleEndian};
+
+// ===== [IMPORTANT] WAV COMPLIANT VERSION NOTES =====
+// THIS VERSION OF WAV ONLY SUPPORTS RIFF, RIFX SUPPORT TO BE ADDED LATER
+// ===== !!!!!!!!! =====
+
+// ===== OUTSIDE OF TEMPLATE ADDITIONS ===
+//#[derive()]
+//enum Result {
+//}
+// ===== END OF ADDITIONS =====
+
+
 
 /// Represents a PCM WAV file
 pub struct PCMWaveInfo {
@@ -80,9 +91,10 @@ impl WaveReader {
     /// happens.
     pub fn open_pcm(file_path: &str) -> Result <PCMWaveInfo, WaveReaderError> {
         //todo!();
-        let wav_file = File::open(file_path)?;
 
-        Result
+        //=== THIS CALLS THE OTHER FUNCTIONS BELOW ===
+        //=== will return to this later! ===
+
     }
 
     /// Read the RIFF header from a PCM WAV file
@@ -95,87 +107,69 @@ impl WaveReader {
     /// Returns a `WaveReaderError` with the appropriate error if something
     /// happens. This includes file read errors and format errors.
     fn read_riff_chunk(fh: &mut File) -> Result <RiffChunk, WaveReaderError> {
-        //todo!();
-        let wav_file = match File::open(file_path){
-            Ok(file) => wav_file;
-            Err(err) => {
-                return Err(WaveReaderError::ReadError);
-            }
-        }
+        // todo!();
+        // What's left to do?
+        // 1.) Address the RIFF and RIFX issue
+        // 2.) Address is_big_endian
+        // 3.) Error handling not yet started
+        // 4.) Unsure pa yung file size if it's accurate in terms of bit arrangements and all that
+        // [OPTIONAL] interpret magic string WAVE (ASCII ata or UTF-8???)
         
-        //// CHECKING IF RIFF BA SIYA OR HINDI
+        let wav_file = fh; // as per the specfications; fh is an argument to this function
 
-        // EXTRACT RIFF HEADER
-        let mut buff = [0u8; 4]; // BUFFER NG RIFF HEADER
-        let first = wav_file.read(&mut buff[...])?;
-        let mut combined = 0u32; // variable that assembles the riff chunk
-        for i in 0..4{
-            combined += buff[3-i];
-            if i == 3{
+
+        // === [START] BUFFER DATA ===
+        let mut riff_buff_fx = [0u8; 4];
+        let mut riff_buff_file_size = [0u8; 4];
+        let mut riff_buff_magic_wave = [0u8; 4];
+
+        wav_file.read(&mut riff_buff_fx); // reads the first four bytes then appends the read data to riff_buff_fx
+        wav_file.read_exact(&mut riff_buff_file_size); // while we may have used just the vanilla "read" function previously, in this case we want to read exactly as per the last position of the pointer
+        wav_file.read_exact(&mut riff_buff_magic_wave);
+        // === [END] OF BUFFER DATA SECTION ===
+
+
+        // === [START] RIFF/RIFX CHUNK READER ===
+        // It's necessary to force a reading method since we assume BigEndian reading for the first four bytes (then check correspondingly if RIFF or RIFX)
+        let mut riff_wav_magic_fx = 0u32; // whether RIFF or RIFX
+        for i in 0..4{ // we initiate a loop to "force" BigEndian reading method
+            riff_wav_magic_fx += riff_buff_fx[i] as u32; // we assemble the data from buffer to just a single string
+            if i == 3{ // we want to bitshift the assembled string to match our "forced" BigEndian reading method, but the last appended data should not be shifted (or else we will lose the first appended data)
                 break
             }
-            combined <<= 8;
+            riff_wav_magic_fx <<= 8; // we bitshift by 8 bits to arrange the single string accordingly
         }
-        // END OF EXTRACTING RIFF HEADER
-        
-        // ACTUAL CHECKING IF RIFF BA SIYA OR NOT
-        if combined == 0x52494646{
-            
-            // EXTRACT WAVE HEADER
-            let mut third_buff = [0u8, 4]; // buffer ng WAVE header
-            wav_file.seek(SeekFrom::Start(8))?;
-            let wave_check = wav_file.read(&mut buff[...])?;
-            let mut wave_form = 0u32; // variable that assembles the wave header chunk
-            for k in 0..4{
-                wave_form += third_buff[3-k];
-                if k == 3{
-                    break
-                }
-                wave_form <<= 8;
-            }
-            // END OF EXTRACTING WAVE HEADER
+        // === [END] OF RIFF/RIFX CHUNK READER ===
 
-            // CHECK IF CORRECT WAVE HEADER
-            if wave_check ==  0x57415645{
-                // IF CORRECT WAVE HEADER, PROCEED TO EXTRACT FILE SIZE
-                
-                //EXTRACT FILE SIZE
-                let mut second_buff = [0u8; 4]; // buffer of file size
-                wav_file.seek(SeekFrom::Start(4))?;
-                let mut wav_file_size = wav_file.read(&mut second_buff[...]);  
-                let mut wav_size_to_return = 0u32;
-                for j in 0..4{
-                    wav_size_to_return += second_buff[3-j];
-                    if j == 3{
-                        break
-                    }
-                    wav_size_to_return <<= 8;
-                }
-                //END OF EXTRACTING FILE SIZE
-        
-                //PACKAGE THE FILE SIZE AS RESULT
-                let riff_chunk = RiffChunk{
-                    file_size: wav_size_to_return,
-                    is_big_endian: false,
-                }
 
-                //RETURN FILE SIZE
-                return Ok(riff_chunk);
-                }
-            
-            // IF EXTRACTED WAVE HEADER IS NOT EQUAL TO THE GIVEN, RETURN ERROR
-            else{
-                return Err(WaveReaderError::NotWaveError);
-            }
-        }
-        // KAPAG RIFF, HINDI NA MAG-RU-RUN YUNG ELSE SA BABA
+        // === [START] FILE SIZE CHUNK READER ===
+        let riff_wav_file_size = u32::from_le_bytes(riff_buff_file_size);
+        // === [END] OF FILE SIZE CHUNK READER ===
 
-        // ELSE ITONG BABA, KUNG HINDI RIFF YUNG FILE
-        else if combined == 
+
+        // === [START] MAGIC WAVE STRING READER ===
+        let riff_wav_magic_wave = u32::from_be_bytes(riff_buff_magic_wave); // magic string WAVE (RIFF)
+        // === [END] OF MAGIC WAVE STRING READER ===
+
+
+        // === [DEBUG ONLY] PRINT EACH SUBCHUNK ===
+        println!("[1] RIFF/RIFX: {riff_wav_magic_fx:#10x}");
+        println!("[2] File size: {riff_wav_file_size:#10} bytes");
+        println!("[3] RIFF file format: {riff_wav_magic_wave:#10x} - (magic string is WAVE; should be 0x57415645)");
+        // === [END OF DEBUG] ===
+
+
+        // === INSTANTIATING RIFFCHUNK AS RESULT ===
+        let riff_chunk = RiffChunk{
+            file_size: riff_wav_file_size,
+            is_big_endian: false
+        };
+        // ===  ===
         
-        else{
-            return Err(WaveReaderError::NotRiffError);
-        }
+        return riff_chunk; // this should be a Result object in the final version
+
+        // === NOTES ===
+        // - use from_be_bytes for RIFX (to be added later)
     }
 
     /// Read the format chunk from a PCM WAV file
@@ -188,57 +182,112 @@ impl WaveReader {
     /// happens. This includes file read errors and format errors.
     fn read_fmt_chunk(fh: &mut File) -> Result <PCMWaveFormatChunk, WaveReaderError> {
         //todo!();
-        let wav_file = match File::open(file_path){
-            Ok(file) => wav_file;
-            Err(err) => {
-                return Err(WaveReaderError::ReadError);
-            }
-        }
-        // LIST OF COMPONENTS UNDER THE FORMAT CHUNK
-        let mut fmt_combined = 0u32; // variable that assembles the fmt header
+        // What's left to do?
+
+        let wav_file = fh; // same as from read_riff_chunk
 
 
+        // === [START] BUFFER DATA ===
+        let mut fmthead_buff_fmt_magic = [0u8; 4];
+        let mut fmthead_buff_fsubchunksize = [0u8; 4];
+        let mut fmthead_buff_audiofmt = [0u8; 2];
+        let mut fmthead_buff_numchs = [0u8; 2];
+        let mut fmthead_buff_samplerate = [0u8; 4];
+        let mut fmthead_buff_byterate = [0u8; 4];
+        let mut fmthead_buff_blockalign = [0u8; 2];
+        let mut fmthead_buff_bitdepth = [0u8; 2];
+        
+        wav_file.read_exact(&mut fmthead_buff_fmt_magic);
+        wav_file.read_exact(&mut fmthead_buff_fsubchunksize);
+        wav_file.read_exact(&mut fmthead_buff_audiofmt);
+        wav_file.read_exact(&mut fmthead_buff_numchs);
+        wav_file.read_exact(&mut fmthead_buff_samplerate);
+        wav_file.read_exact(&mut fmthead_buff_byterate);
+        wav_file.read_exact(&mut fmthead_buff_blockalign);
+        wav_file.read_exact(&mut fmthead_buff_bitdepth);
+        // === [END] OF BUFFER DATA SECTION ===
 
-        // EXTRACT FMT HEADER
-        wav_file.seek(SeekFrom::Start(12));
-        let mut fourth_buff = [0u8; 4]; // BUFFER NG FMT HEADER
-        let fmt_header = wav_file.read(&mut buff[...])?;
 
-        for i in 0..4{
-            fmt_combined += buff[3-i];
-            if i == 3{
+        // === [START] FMT Magic String ===
+        let mut fmthead_fmt_magic = 0u32;
+        for j in 0..4{
+            fmthead_fmt_magic += fmthead_buff_fmt_magic[j] as u32;
+            if j == 3{
                 break
             }
-            fmt_combined <<= 8;
+            fmthead_fmt_magic <<= 8;
         }
-        // END OF EXTRACTING RIFF HEADER
-        
-        // ACTUAL CHECKING IF RIFF BA SIYA OR NOT
-        if combined == 0x52494646{
-            
-            // EXTRACT WAVE HEADER
-            let mut third_buff = [0u8, 4];
-            wav_file.seek(SeekFrom::Start(8))?;
-            let wave_check = wav_file.read(&mut buff[...])?;
-            let mut wave_form = 0u32; // variable that assembles the riff chunk
-            for k in 0..4{
-                wave_form += third_buff[3-k];
-                if k == 3{
-                    break
-                }
-                wave_form <<= 8;
+        // === [END] of FMT Magic String ===
+
+
+        // === [START] FSubchunkSize READER ===
+        let fmthead_fsubchunksize = u32::from_le_bytes(fmthead_buff_fsubchunksize); // always little endian (?)
+        // === [END] OF FSUBCHUNKSIZE READER ===
+
+
+        // === [START] AudioFmt READER ===
+        //let fmthead_audiofmt = u32::from_le_bytes(fmthead_buff_audiofmt); // always little endian(?)
+        let mut fmthead_audiofmt = 0u32;
+        for k in 0..2{
+            fmthead_audiofmt += fmthead_buff_audiofmt[k] as u32;
+            if k == 3{
+                break
             }
-            // END OF EXTRACTING WAVE HEADER
+            // Since little-endian always(?), no need for bitshift: fmthead_audiofmt <<= 8;
         }
-        
-        // KAPAG RIFF, HINDI NA MAG-RU-RUN YUNG ELSE SA BABA
+        // === [END] OF AudioFmt READER ===
 
-        // ELSE ITONG BABA, KUNG HINDI RIFF YUNG FILE
-        else{
-            return Err(WaveReaderError::NotRiffError);
+
+        // === [START] Numchs READER ===
+        let mut fmthead_numchs = 0u32;
+        for l in 0..2{
+            fmthead_numchs += fmthead_buff_numchs[l] as u32;
+            if l == 3{
+                break
+            }
+            // Since little-endian always(?), no need for bitshift: fmthead_numchs <<= 8;
         }
-    }
+        // === [END] OF NUMCHS READER ===
 
+
+        // === [START] Sample Rate READER ===
+        let fmthead_samplerate = u32::from_le_bytes(fmthead_buff_samplerate);
+        // === [END] OF Sample Rate READER ===
+
+
+        // === [START] Byte Rate READER ===
+        let fmthead_byterate = u32::from_le_bytes(fmthead_buff_byterate);
+        // === [END] OF Byte Rate READER ===
+
+
+        // === [START] Block Align READER ===
+        let mut fmthead_blockalign = 0u32;
+        for m in 0..2{
+            fmthead_blockalign += fmthead_buff_blockalign[m] as u32;
+        }
+        // === [END] OF Block Align Reader ===
+
+
+        // === [START] BIT DEPTH READER ===
+        let mut fmthead_bitdepth = 0u32;
+        for n in 0..2{
+            fmthead_bitdepth += fmthead_buff_bitdepth[n] as u32;
+        }
+        // === [END] OF BIT DEPTH READER ===
+
+
+        // === [DEBUG ONLY] PRINTING THE CHUNKS ===
+        println!("[4] fmt_ magic string: {fmthead_fmt_magic:#10x} - (magic string should be 0x666d7420)");
+        println!("[5] FSubchunkSize: {fmthead_fsubchunksize:#10x} - (fixed value is 16 or 0x00000010)");
+        println!("[6] AudioFmt: {fmthead_audiofmt:#06x} - (fixed value is 1 or 0x0001)");
+        println!("[7] Number of Channels: {fmthead_numchs:#1} - (1 for mono, 2 for stereo)");
+        println!("[8] Sample Rate: {fmthead_samplerate:#10} Hz");
+        println!("[9] Byte Rate: {fmthead_byterate:#10}");
+        println!("[10] Block Alignment: {fmthead_blockalign:#10} bytes");
+        println!("[11] Bit Depth: {fmthead_bitdepth:#10} bits-per-sample (size of the sample)");
+        // === [END OF DEBUG] ===
+
+        return;
     }
 
     /// Read the data chunk from a PCM WAV file
