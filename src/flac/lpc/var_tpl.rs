@@ -226,4 +226,36 @@ mod tests {
 
         assert_eq!(out_vec_ans, out_vec);
     }
+
+    #[test]
+    fn test_get_predictor_coeffs() {
+        // Test input data (autocorrelation coefficients)
+        let autoc = vec![24710.0, 18051.0, 7050.0, 632.0];
+        let predictor_order = 3;
+
+        // Expected result (adjusted)
+        let expected_result = vec![1.27123, -0.85145, 0.28488];
+
+        // Call the function
+        let predictor_coeffs = get_predictor_coeffs(&autoc, predictor_order);
+
+        // Compare with expected result
+        assert_eq!(predictor_coeffs.len(), expected_result.len());
+        for i in 0..predictor_coeffs.len() {
+            assert_f64_near!(predictor_coeffs[i], expected_result[i], 5);
+        }
+    }
+
+    // https://docs.rs/assert_float_eq/latest/assert_float_eq/macro.assert_f64_near.html
+    // ^ Reference Implementation
+    macro_rules! assert_f64_near {
+        // Explicit steps.
+        ($a:expr, $b:expr, $n:expr) => {{
+            let (a, b, n) = ($a, $b, $n);
+            let r = (a - b).abs() < 10f64.powi(-n);
+            assert!(r, "{} is not approximately equal to {} with precision {}", a, b, n);
+        }};
+        // No explicit steps, use default.
+        ($a:expr, $b:expr) => (assert_f64_near!($a, $b, 4));
+    }
 }
