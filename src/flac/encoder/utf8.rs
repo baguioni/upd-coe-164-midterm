@@ -112,4 +112,31 @@ mod tests {
 
         assert_eq!(out_val_ans, out_val);
     }
+
+    #[test]
+    fn sample_03() {
+        let in_val = 0x2153;
+        let out_val_ans = vec![0xe2u8, 0x85u8, 0x93u8];
+        let out_val = Utf8Encoder::encode(in_val);
+
+        assert_eq!(out_val_ans, out_val);
+    }
+
+    #[test]
+    fn sample_04() {
+        let in_val = 0x56789;
+        let out_val_ans = vec![0xf1u8, 0x96u8, 0x9eu8, 0x89u8];
+        let out_val = Utf8Encoder::encode(in_val);
+
+        assert_eq!(out_val_ans, out_val);
+    }
+    
+    #[test]
+    fn sample_05() {
+        let in_val = 0x200209;
+        let out_val_ans = vec![0xf8u8, 0x88u8, 0x80u8, 0x88u8, 0x89u8];
+        let out_val = Utf8Encoder::encode(in_val);
+
+        assert_eq!(out_val_ans, out_val);
+    }
 }

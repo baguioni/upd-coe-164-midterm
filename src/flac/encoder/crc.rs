@@ -85,6 +85,17 @@ mod tests {
 
         assert_eq!(ans, 0x70);
     }
+    
+    #[test]
+    fn sample_crc8_02() {
+        let in_vec = vec![
+            0x3a, 0x9f, 0x7c,
+        ];
+        let ans = CrcOptions::new(0b0010_0101u8, 8)
+            .build_crc8(&in_vec);
+
+        assert_eq!(ans, 0xba);
+    }
 
     #[test]
     fn sample_crc8_ietf_01() {
@@ -97,6 +108,19 @@ mod tests {
 
         assert_eq!(ans, 0xbf);
     }
+    
+    #[test]
+    fn sample_crc8_ietf_02() {
+        let in_vec = vec![
+            0x15, 0xa2, 0xf3, 0xe4,
+            0x75, 0xc6, 0x36, 0x55, 
+            0x2e,
+        ];
+        let ans = CrcOptions::new(0b0000_1000u8, 8)
+            .build_crc8(&in_vec);
+
+        assert_eq!(ans, 0xa8);
+    }
 
     #[test]
     fn sample_crc16_01() {
@@ -107,6 +131,17 @@ mod tests {
             .build_crc16(&in_vec);
 
         assert_eq!(ans, 0xe003);
+    }
+    
+    #[test]
+    fn sample_crc16_02() {
+        let in_vec = vec![
+            0x10, 0x12, 0x0f, 0x1d,
+        ];
+        let ans = CrcOptions::new(0b0101_1010_1010_0101u16, 16)
+            .build_crc16(&in_vec);
+
+        assert_eq!(ans, 0x1fee);
     }
 
     #[test]
@@ -121,5 +156,20 @@ mod tests {
             .build_crc16(&in_vec);
 
         assert_eq!(ans, 0xaa9a);
+    }
+    
+    #[test]
+    fn sample_crc16_ietf_02() {
+        let in_vec = vec![
+           0xa5, 0xb8, 0xc9, 0xd1,
+           0x2e, 0x4f, 0x18, 0x15,
+           0x23, 0x01, 0x17, 0x8a, 
+           0x9b, 0x4c, 0x6d, 0x7e, 
+           0x5f,
+        ];
+        let ans = CrcOptions::new(0b1111_0000_0011_1100u16, 16)
+            .build_crc16(&in_vec);
+
+        assert_eq!(ans, 0xfe88);
     }
 }
