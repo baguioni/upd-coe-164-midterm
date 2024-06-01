@@ -2,8 +2,8 @@ use core::fmt;
 use std::fs::File;
 use std::path::Path;
 use std::error;
-use std::io::{self, Read, Seek, SeekFrom};
-use byteorder::{ByteOrder, LittleEndian};
+use std::io::{self, Read, Seek, SeekFrom, BufReader};
+use byteorder::{ByteOrder, LittleEndian, LE};
 
 // ===== [IMPORTANT] WAV COMPLIANT VERSION NOTES =====
 // THIS VERSION OF WAV ONLY SUPPORTS RIFF, RIFX SUPPORT TO BE ADDED LATER
@@ -27,15 +27,15 @@ pub struct PCMWaveInfo {
 
 
 // === ADDED AS PER SPECIFICIATIONS ===
-impl PCMWaveInfo{
-    fn byte_rate(&self, byterate: u32){
-        println!("{self.fmt_header::fmthead_byterate}");
-    }
+// impl PCMWaveInfo{
+//     fn byte_rate(&self, byterate: u32){
+//         println!("{}",self.fmt_header::fmthead_byterate);
+//     }
 
-    fn block_align(&self){
+//     fn block_align(&self){
 
-    }
-}
+//     }
+// }
 
 
 /// Represents a RIFF chnk from a WAV file
@@ -104,8 +104,26 @@ impl WaveReader {
     /// Returns a `WaveReaderError` with the appropriate error if something
     /// happens.
     pub fn open_pcm(file_path: &str) -> Result <PCMWaveInfo, WaveReaderError> {
-        //todo!();
+        let mut wav_file = File::open(file_path).map_err(|_| WaveReaderError::ReadError)?;
 
+        let riff_header = Self::read_riff_chunk(&mut wav_file)?;
+        wav_file.seek(SeekFrom::Start(12)).map_err(|_| WaveReaderError::ReadError)?;
+        let fmt_header = Self::read_fmt_chunk(&mut wav_file)?;
+        let mut data_chunks = Vec::new();
+
+        wav_file.seek(SeekFrom::Start(36)).map_err(|_| WaveReaderError::ReadError)?;
+        let data_chunk = Self::read_data_chunk(
+            wav_file
+            .seek(SeekFrom::Current(0))
+            .map_err(|_| WaveReaderError::ReadError)?, &fmt_header, wav_file)?;
+        data_chunks.push(data_chunk);
+
+        Ok(PCMWaveInfo{
+                riff_header: riff_header,
+                fmt_header: fmt_header,
+                data_chunks: data_chunks
+            }
+        )
         //=== THIS CALLS THE OTHER FUNCTIONS BELOW ===
         //=== will return to this later! ===
 
@@ -248,23 +266,6 @@ impl WaveReader {
         // === [END] OF AudioFmt READER ===
 
 
-        // === [START] Numchs READER ===
-        let mut fmthead_numchs = 0u32;
-        for l in 0..2{
-            fmthead_numchs += fmthead_buff_numchs[l] as u32;
-            if l == 3{
-                break
-            }
-            // Since little-endian always(?), no need for bitshift: fmthead_numchs <<= 8;
-        }
-        // === [END] OF NUMCHS READER ===
-
-
-        // === [START] Sample Rate READER ===
-        let fmthead_samplerate = u32::from_le_bytes(fmthead_buff_samplerate);
-        // === [END] OF Sample Rate READER ===
-
-
         // === [START] Byte Rate READER ===
         let fmthead_byterate = u32::from_le_bytes(fmthead_buff_byterate);
         // === [END] OF Byte Rate READER ===
@@ -278,26 +279,46 @@ impl WaveReader {
         // === [END] OF Block Align Reader ===
 
 
-        // === [START] BIT DEPTH READER ===
-        let mut fmthead_bitdepth = 0u32;
-        for n in 0..2{
-            fmthead_bitdepth += fmthead_buff_bitdepth[n] as u32;
-        }
-        // === [END] OF BIT DEPTH READER ===
-
-
         // === [DEBUG ONLY] PRINTING THE CHUNKS ===
         println!("[4] fmt_ magic string: {fmthead_fmt_magic:#10x} - (magic string should be 0x666d7420)");
         println!("[5] FSubchunkSize: {fmthead_fsubchunksize:#10x} - (fixed value is 16 or 0x00000010)");
         println!("[6] AudioFmt: {fmthead_audiofmt:#06x} - (fixed value is 1 or 0x0001)");
-        println!("[7] Number of Channels: {fmthead_numchs:#1} - (1 for mono, 2 for stereo)");
-        println!("[8] Sample Rate: {fmthead_samplerate:#10} Hz");
+        // println!("[7] Number of Channels: {fmthead_numchs:#1} - (1 for mono, 2 for stereo)");
+        // println!("[8] Sample Rate: {fmthead_samplerate:#10} Hz");
         println!("[9] Byte Rate: {fmthead_byterate:#10}");
         println!("[10] Block Alignment: {fmthead_blockalign:#10} bytes");
-        println!("[11] Bit Depth: {fmthead_bitdepth:#10} bits-per-sample (size of the sample)");
+        // println!("[11] Bit Depth: {fmthead_bitdepth:#10} bits-per-sample (size of the sample)");
         // === [END OF DEBUG] ===
 
-        return;
+
+        // === [START] Numchs READER ===
+        let mut fmthead_numchs = 0u16;
+        for l in 0..2{
+            fmthead_numchs += fmthead_buff_numchs[l] as u16;
+            if l == 3{
+                break
+            }
+            // Since little-endian always(?), no need for bitshift: fmthead_numchs <<= 8;
+        }
+        // === [END] OF NUMCHS READER ===
+
+        // === [START] Sample Rate READER ===
+        let fmthead_samplerate = u32::from_le_bytes(fmthead_buff_samplerate);
+        // === [END] OF Sample Rate READER ===
+        
+        
+        // === [START] BIT DEPTH READER ===
+        let mut fmthead_bitdepth = 0u16;
+        for n in 0..2{
+            fmthead_bitdepth += fmthead_buff_bitdepth[n] as u16;
+        }
+        // === [END] OF BIT DEPTH READER ===
+
+        Ok(PCMWaveFormatChunk{
+            num_channels: fmthead_numchs,
+            samp_rate: fmthead_samplerate,
+            bps: fmthead_bitdepth,
+        })
     }
 
     /// Read the data chunk from a PCM WAV file
@@ -315,12 +336,10 @@ impl WaveReader {
         //todo!();
         // What's left to do?
 
-        let wav_file = fh;
-
         
         // === [START] PARSE DETAILS FROM OTHER OBJECTS ===
-        let bitdepth = PCMWaveFormatChunk.bps;
-        let numchs = PCMWaveFormatChunk.samp_rate;
+        let bitdepth = fmt_info.bps;
+        let numchs = fmt_info.samp_rate;
         // === [END] OF PARSING DETAILS FROM OTHER OBJECTS ===
 
 
@@ -328,8 +347,8 @@ impl WaveReader {
         let mut data_buff_magic = [0u8; 4];
         let mut data_buff_dsubchunksize = [0u8; 4];
 
-        wav_file.read_exact(&mut data_buff_magic);
-        wav_file.read_exact(&mut data_buff_dsubchunksize);
+        fh.read_exact(&mut data_buff_magic);
+        fh.read_exact(&mut data_buff_dsubchunksize);
         // === [END] OF BUFFER DATA SECTION ===
 
 
@@ -344,7 +363,7 @@ impl WaveReader {
 
 
         // === [START] Number of Samples (computed) ===
-        let number_of_samples = (data_dsubchunksize << 8)/(numchs * bitdepth);
+        // let number_of_samples = (data_dsubchunksize << 8)/(numchs * bitdepth);
         // === [END] of Number of Samples (computed) ===
 
 
@@ -356,10 +375,36 @@ impl WaveReader {
         // === [DEBUG ONLY] PRINT EACH SUBCHUNK ===
         println!("[12] data magic string: {data_magic:#10x} - (0x64617461)");
         println!("[13] DSubchunk Size: {data_dsubchunksize:#10}");
-        println!("[14] Number of Samples: {number_of_samples:#10}");
+        // println!("[14] Number of Samples: {number_of_samples:#10}");
         println!("[15] No audio data representation yet");
         // === [END OF DEBUG] ===
 
+        // == Implementation ==
+        let mut data_header = [0u8; 8];
+        fh.read_exact(&mut data_header).map_err(|_| WaveReaderError::ReadError)?;
+        let data_tag = String::from_utf8_lossy(&data_header[0..4]).to_string();
+
+        if data_tag.as_str() != "data" {
+            return Err(WaveReaderError::ChunkTypeError);
+        }
+
+        let data_size = LittleEndian::read_u32(&data_header[4..8]);
+
+
+        if data_size % fmt_info.block_align() as u32 != 0 {
+            return Err(WaveReaderError::DataAlignmentError);
+        }
+
+        let data_buf = BufReader::new({
+            fh.seek(SeekFrom::Start(start_pos + 8))?;
+            fh
+        });
+
+        return Ok(PCMWaveDataChunk{
+            size_bytes: data_size,
+            format: *fmt_info,
+            data_buf: data_buf,
+        })
     }
 }
 
