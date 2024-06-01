@@ -174,14 +174,10 @@ impl WaveReader {
 
 
         // === INSTANTIATING RIFFCHUNK AS RESULT ===
-        let riff_chunk = RiffChunk{
+        Ok(RiffChunk{
             file_size: riff_wav_file_size,
             is_big_endian: false
-        };
-        // ===  ===
-        
-        return riff_chunk; // this should be a Result object in the final version
-
+        })
         // === NOTES ===
         // - use from_be_bytes for RIFX (to be added later)
     }
@@ -371,26 +367,43 @@ impl error::Error for WaveReaderError {}
 
 impl fmt::Display for WaveReaderError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+        match self {
+            WaveReaderError::NotRiffError => write!(f, "Not a RIFF File"),
+            WaveReaderError::NotWaveError => write!(f,"Not a WAV File"),
+            WaveReaderError::NotPCMError => write!(f, "Not a PCM File"),
+            WaveReaderError::ChunkTypeError => write!(f, "Unrecognized Chunk Type"),
+            WaveReaderError::DataAlignmentError => write!(f, "Data size mismatch"),
+            WaveReaderError::ReadError => write!(f, "I/O Error"),
+        }
     }
 }
 
 impl From <io::Error> for WaveReaderError {
     fn from(_: io::Error) -> Self {
-        todo!("Convert an I/O error into a WaveReaderError")
+        WaveReaderError::ReadError
     }
 }
 
 impl fmt::Display for PCMWaveInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!("Display a PCMWaveInfo struct in this format: WAVE File <FileSize> bytes, <BitDepth>-bit <NumChannels> channels, <SampleRate>Hz, <NumDataChunks> data chunks")
+        write!(f, "WAVE File {} bytes, {}-bit {} channels, {} Hz, {} data chunks", 
+            self.riff_header.file_size,
+            self.fmt_header.bps,
+            self.fmt_header.num_channels,
+            self.fmt_header.samp_rate,
+            self.data_chunks.len()
+        )
     }
 }
 
 impl PCMWaveFormatChunk {
     /// Get or calculate the byte rate of this PCM WAV file
     fn byte_rate(&self) -> u32 {
-        todo!();
+        let samp_rate = self.samp_rate;
+        let num_channels = self.num_channels as u32;
+        let bps = self.bps as u32;
+
+        (samp_rate * num_channels * bps) / 8
     }
 
     /// Get or calculate the block alignment of this PCM WAV file
@@ -399,7 +412,10 @@ impl PCMWaveFormatChunk {
     /// in bytes. An *inter-channel sample* is a sample with all of its
     /// channels collated together.
     fn block_align(&self) -> u16 {
-        todo!();
+        let num_channels = self.num_channels;
+        let bytes_per_sample = self.bps / 8;
+
+        (num_channels * bytes_per_sample) as u16
     }
 }
 
@@ -407,7 +423,25 @@ impl Iterator for PCMWaveDataChunk {
     type Item = Vec <i64>;
 
     fn next(&mut self) -> Option <Self::Item> {
-        todo!("Return one inter-channel sample at a time")
+        let num_channels = self.format.num_channels as usize;
+        let mut  chunks = Vec::new();
+
+        for _ in 0..num_channels {
+            let bps = self.format.bps as usize / 8;
+            let mut buffer = vec![0; bps];
+
+            // EOF or Error
+            if self.data_buf.read_exact(&mut buffer).is_err() {
+                return None; 
+            }
+
+            chunks.push(match bps {
+                2 => i16::from_le_bytes([buffer[0], buffer[1]]) as i64,
+                1 => i8::from_le_bytes([buffer[0]]) as i64,
+                _ => return None,
+            });
+        }
+        Some(chunks)
     }
 }
 
@@ -415,7 +449,20 @@ impl Iterator for PCMWaveDataChunkWindow {
     type Item = Vec <Vec <i64>>;
 
     fn next(&mut self) -> Option <Self::Item> {
-        todo!("Return self.chunk_size amount of inter-channel samples at a time")
+        let mut chunk_window = Vec::new();
+
+        for _ in 0..self.chunk_size {
+            if let Some(sample) = self.data_chunk.next() {
+                chunk_window.push(sample);
+            } else {
+                break;
+            }
+        }
+
+        if chunk_window.is_empty() {
+            return None
+        }
+        Some(chunk_window)
     }
 }
 
@@ -425,7 +472,10 @@ impl PCMWaveDataChunk {
     /// This method is used to get a *single* inter-channel
     /// sample from a data chunk.
     pub fn chunks_byte_rate(self) -> PCMWaveDataChunkWindow {
-        todo!();
+        PCMWaveDataChunkWindow {
+            chunk_size: self.format.byte_rate() as usize,
+            data_chunk: self
+        }
     }
 
     /// Consume a data chunk and get an iterator
@@ -436,7 +486,10 @@ impl PCMWaveDataChunk {
     /// return a `Vec` of size *at most* 44100 with each element as another `Vec`
     /// of size 2.
     pub fn chunks(self, chunk_size: usize) -> PCMWaveDataChunkWindow {
-        todo!();
+        PCMWaveDataChunkWindow {
+            chunk_size,
+            data_chunk: self,
+        }
     }
 }
 
