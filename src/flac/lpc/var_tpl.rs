@@ -7,6 +7,8 @@ impl VarPredictor {
     /// data from `R[0]` until `R[max_lag]`. For example, if `max_lag` is 2, then
     /// the output contains three elements corresponding to R[0] until R[3],
     /// respectively
+    /// https://github.com/xiph/flac/blob/cfe3afca9b3f27f0877203570705e072f0981b2e/src/libFLAC/lpc.c#L110
+    /// ^ Reference Implementation
     pub fn get_autocorrelation(samples: &Vec <i64>, max_lag: u8) -> Vec <f64> {
         // Initialize autocorrelation vector
         let mut autoc = vec![0.0; max_lag as usize + 1];
@@ -31,17 +33,21 @@ impl VarPredictor {
     /// the autocorrelation value of lag `i - 1`. `predictor_order` should be
     /// less than `autoc.len()`. The coefficients are computed using the Levinson-Durbin
     /// algorithm.
-    pub fn get_predictor_coeffs(autoc: &Vec <f64>, predictor_order: u8) -> Vec <f64> {
+    /// https://github.com/xiph/flac/blob/cfe3afca9b3f27f0877203570705e072f0981b2e/src/libFLAC/lpc.c#L176
+    /// ^ Reference Implementation
+    pub fn get_predictor_coeffs(autoc: &Vec<f64>, predictor_order: u8) -> Vec<f64> {
         let mut lpc: Vec<f64> = vec![0.0; predictor_order as usize];
         let mut err = autoc[0];
     
         for i in 0..predictor_order {
+            // Sum up this iteration's reflection coefficient.
             let mut r = -autoc[(i + 1) as usize];
             for j in 0..i {
                 r -= lpc[j as usize] * autoc[(i - j) as usize];
             }
             r /= err;
     
+            // Update LPC coefficients and total error.
             lpc[i as usize] = r;
     
             for j in 0..(i >> 1) {
@@ -54,6 +60,11 @@ impl VarPredictor {
             }
     
             err *= 1.0 - r * r;
+        }
+    
+        // negate FIR filter coeff to get predictor coeff
+        for coeff in lpc.iter_mut() {
+            *coeff = -*coeff;
         }
     
         lpc
@@ -85,8 +96,37 @@ impl VarPredictor {
     /// Then, `L_i_r + \epsilon` is rounded away from zero to get the quantized coefficient.
     /// The new rounding error `\epsilon = L_i_r + \epsilon - round(L_i_r)` is then updated for the
     /// next coefficient.
-    pub fn quantize_coeffs(lpc_coefs: &Vec <f64>, mut precision: u8) -> (Vec <i64>, u8) {
-        todo!()
+    pub fn quantize_coeffs(lpc_coefs: &Vec<f64>, mut precision: u8) -> (Vec<i64>, u8) {
+        use std::f64;
+    
+        // Step 1: Compute L_max
+        let l_max = lpc_coefs.iter().cloned().fold(f64::MIN, f64::max).abs();
+    
+        // Step 2: Determine shift factor S
+        let lg_l_max = l_max.log2();
+        let s = if precision as f64 - lg_l_max < 0.0 {
+            0
+        } else {
+            (precision as f64 - lg_l_max).floor() as i8
+        }.min(31).max(-31) as u8;
+    
+        // Step 3: Quantize the coefficients
+        let shift_value = if s > 0 { 1 << s } else { 1 };
+        let mut quantized_coefs = Vec::with_capacity(lpc_coefs.len());
+        let mut epsilon = 0.0;
+    
+        for &coef in lpc_coefs {
+            let raw_value = if s > 0 {
+                coef * (shift_value as f64) + epsilon
+            } else {
+                coef / (shift_value as f64) + epsilon
+            };
+            let quantized_value = raw_value.round();
+            epsilon = raw_value - quantized_value;
+            quantized_coefs.push(quantized_value as i64);
+        }
+    
+        (quantized_coefs, s)
     }
 
     /// Compute the residuals from a given linear predictor
