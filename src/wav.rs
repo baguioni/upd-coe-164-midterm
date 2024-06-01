@@ -149,55 +149,100 @@ impl WaveReader {
         
         let wav_file = fh; // as per the specfications; fh is an argument to this function
 
+        let mut riff_chunk = RiffChunk{
+            file_size: 0,
+            is_big_endian: false,
+        };
 
         // === [START] BUFFER DATA ===
         let mut riff_buff_fx = [0u8; 4];
         let mut riff_buff_file_size = [0u8; 4];
         let mut riff_buff_magic_wave = [0u8; 4];
 
-        wav_file.read(&mut riff_buff_fx); // reads the first four bytes then appends the read data to riff_buff_fx
+        wav_file.read_exact(&mut riff_buff_fx); // reads the first four bytes then appends the read data to riff_buff_fx
         wav_file.read_exact(&mut riff_buff_file_size); // while we may have used just the vanilla "read" function previously, in this case we want to read exactly as per the last position of the pointer
         wav_file.read_exact(&mut riff_buff_magic_wave);
         // === [END] OF BUFFER DATA SECTION ===
 
+        let riff = "RIFF".to_string();
+        let rifx = "RIFX".to_string();
+        let wave = "WAVE".to_string();
 
-        // === [START] RIFF/RIFX CHUNK READER ===
-        // It's necessary to force a reading method since we assume BigEndian reading for the first four bytes (then check correspondingly if RIFF or RIFX)
-        let mut riff_wav_magic_fx = 0u32; // whether RIFF or RIFX
-        for i in 0..4{ // we initiate a loop to "force" BigEndian reading method
-            riff_wav_magic_fx += riff_buff_fx[i] as u32; // we assemble the data from buffer to just a single string
-            if i == 3{ // we want to bitshift the assembled string to match our "forced" BigEndian reading method, but the last appended data should not be shifted (or else we will lose the first appended data)
-                break
-            }
-            riff_wav_magic_fx <<= 8; // we bitshift by 8 bits to arrange the single string accordingly
+        let riff_wav_magic_fx = String::from_utf8_lossy(&riff_buff_fx);
+        let mut riff_wav_magic_wave = 0u32;
+
+        if riff_wav_magic_fx == riff{
+            riff_chunk.file_size = u32::from_le_bytes(riff_buff_file_size);
+            let riff_wav_magic_wave = u32::from_le_bytes(riff_buff_magic_wave);
         }
-        // === [END] OF RIFF/RIFX CHUNK READER ===
+        else if riff_wav_magic_fx == rifx{
+            riff_chunk.file_size = u32::from_be_bytes(riff_buff_file_size);
+            riff_chunk.is_big_endian = true;
+            let riff_wav_magic_wave = u32::from_be_bytes(riff_buff_magic_wave);
+        }
+        else{
+            return Err(WaveReaderError::NotRiffError)
+        }
+
+        // Check for "WAVE" string
+        let wave_bytes: [u8; 4] = [0x57, 0x41, 0x56, 0x45]; // ASCII representation of "WAVE"
+        if riff_buff_magic_wave == wave_bytes {
+            return Ok(riff_chunk);
+        } else {
+            return Err(WaveReaderError::NotWaveError);
+        }
 
 
-        // === [START] FILE SIZE CHUNK READER ===
-        let riff_wav_file_size = u32::from_le_bytes(riff_buff_file_size);
-        // === [END] OF FILE SIZE CHUNK READER ===
+        // // === [START] RIFF/RIFX CHUNK READER ===
+        // let mut riff_wav_magic_fx = String::from_utf8_lossy(&riff_buff_fx).to_string();
+        // let mut endianness:bool = false;
+        // let mut riff_wav_file_size = 0u32;
 
+        // if riff_wav_magic_fx == "RIFF".to_string(){
+        //     let riff_wav_file_size = u32::from_le_bytes(riff_buff_file_size);
+        //     let endianness = false;
+        // }
+        // else if riff_wav_magic_fx == "RIFX".to_string(){
+        //     let riff_wav_file_size = u32::from_be_bytes(riff_buff_file_size);
+        //     let endianness = true;
+        // }
+        // else{
+        //     return Err(WaveReaderError::NotRiffError);
+        // }
+        // // === [END] OF RIFF/RIFX CHUNK READER ===
 
-        // === [START] MAGIC WAVE STRING READER ===
-        let riff_wav_magic_wave = u32::from_be_bytes(riff_buff_magic_wave); // magic string WAVE (RIFF)
-        // === [END] OF MAGIC WAVE STRING READER ===
+        // // === [START] MAGIC WAVE STRING READER ===
+        // let mut riff_wav_magic_wave = "";
+        
+        // if endianness == false{
+        //     let riff_wav_magic_wave_raw = u32::from_le_bytes(riff_buff_magic_wave);
+        //     let riff_wav_magic_wave = String::from_utf8_lossy(&riff_buff_file_size);
+        // }
+        // else if endianness == true{
+        //     let riff_wav_magic_wave_raw = u32::from_be_bytes(riff_buff_magic_wave);
+        //     let riff_wav_magic_wave = String::from_utf8_lossy(&riff_buff_magic_wave);
+        // }  
+        // else{
+        //     return Err(WaveReaderError::NotWaveError)
+        // }
 
+        // //let riff_wav_magic_wave = String::from_utf8_lossy(&riff_buff_magic_wave); // magic string WAVE (RIFF)
+        // if riff_wav_magic_wave == "WAVE".to_string(){
+        //     return Ok(RiffChunk{
+        //         file_size: riff_wav_file_size,
+        //         is_big_endian: endianness
+        //     })
+        // }
+        // else{
+        //     return Err(WaveReaderError::NotWaveError);
+        // }
+        // // === [END] OF MAGIC WAVE STRING READER ===
 
         // === [DEBUG ONLY] PRINT EACH SUBCHUNK ===
-        println!("[1] RIFF/RIFX: {riff_wav_magic_fx:#10x}");
-        println!("[2] File size: {riff_wav_file_size:#10} bytes");
-        println!("[3] RIFF file format: {riff_wav_magic_wave:#10x} - (magic string is WAVE; should be 0x57415645)");
+        println!("[1] RIFF/RIFX: {riff_wav_magic_fx}");
+        //println!("[2] File size: {riff_wav_file_size:#10} bytes");
+        println!("[3] RIFF file format: {riff_wav_magic_wave} - (magic string is WAVE; should be 0x57415645)");
         // === [END OF DEBUG] ===
-
-
-        // === INSTANTIATING RIFFCHUNK AS RESULT ===
-        Ok(RiffChunk{
-            file_size: riff_wav_file_size,
-            is_big_endian: false
-        })
-        // === NOTES ===
-        // - use from_be_bytes for RIFX (to be added later)
     }
 
     /// Read the format chunk from a PCM WAV file
