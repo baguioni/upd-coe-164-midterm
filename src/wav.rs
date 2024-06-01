@@ -24,6 +24,20 @@ pub struct PCMWaveInfo {
     pub data_chunks: Vec <PCMWaveDataChunk>,
 }
 
+
+
+// === ADDED AS PER SPECIFICIATIONS ===
+impl PCMWaveInfo{
+    fn byte_rate(&self, byterate: u32){
+        println!("{self.fmt_header::fmthead_byterate}");
+    }
+
+    fn block_align(&self){
+
+    }
+}
+
+
 /// Represents a RIFF chnk from a WAV file
 /// 
 /// The RIFF chunk is the first 12 bytes of a WAV file.
@@ -302,7 +316,54 @@ impl WaveReader {
     /// Returns a `WaveReaderError` with the appropriate error if something
     /// happens. This includes file read errors and format errors.
     fn read_data_chunk(start_pos: u64, fmt_info: &PCMWaveFormatChunk, mut fh: File) -> Result <PCMWaveDataChunk, WaveReaderError> {
-        todo!();
+        //todo!();
+        // What's left to do?
+
+        let wav_file = fh;
+
+        
+        // === [START] PARSE DETAILS FROM OTHER OBJECTS ===
+        let bitdepth = PCMWaveFormatChunk.bps;
+        let numchs = PCMWaveFormatChunk.samp_rate;
+        // === [END] OF PARSING DETAILS FROM OTHER OBJECTS ===
+
+
+        // === [START] BUFFER DATA ===
+        let mut data_buff_magic = [0u8; 4];
+        let mut data_buff_dsubchunksize = [0u8; 4];
+
+        wav_file.read_exact(&mut data_buff_magic);
+        wav_file.read_exact(&mut data_buff_dsubchunksize);
+        // === [END] OF BUFFER DATA SECTION ===
+
+
+        // === [START] DATA HEADER MAGIC STRING READRER ===
+        let data_magic = u32::from_be_bytes(data_buff_magic);
+        // === [END] OF DATA HEADER MAGIC STRING READER ===
+
+
+        // === [START] DSubchunk Size Reader ===
+        let data_dsubchunksize = u32::from_le_bytes(data_buff_dsubchunksize);
+        // === [END] OF Dsubchunk Size Reader ===
+
+
+        // === [START] Number of Samples (computed) ===
+        let number_of_samples = (data_dsubchunksize << 8)/(numchs * bitdepth);
+        // === [END] of Number of Samples (computed) ===
+
+
+        // === [START] (Experimental) Audio Data ===
+        let mut data_buff_audio = [[0u8; 2]; 38956]; // fixed amount for now, but it should be a variable
+        // === [END] Audio Data ===        
+
+    
+        // === [DEBUG ONLY] PRINT EACH SUBCHUNK ===
+        println!("[12] data magic string: {data_magic:#10x} - (0x64617461)");
+        println!("[13] DSubchunk Size: {data_dsubchunksize:#10}");
+        println!("[14] Number of Samples: {number_of_samples:#10}");
+        println!("[15] No audio data representation yet");
+        // === [END OF DEBUG] ===
+
     }
 }
 
