@@ -138,7 +138,23 @@ impl VarPredictor {
     /// The residuals are computed with the `samples` reversed. For some `i`th residual,
     /// `residual[i] = data[i] - (sum(dot(qlp_coefs, samples[i..(i - predictor_order)])) >> qlp_shift)`.
     pub fn get_residuals(samples: &Vec <i64>, qlp_coefs: &Vec <i64>, predictor_order: u8, qlp_shift: u8) -> Vec <i64> {
-        todo!()
+        let mut residuals: Vec <i64> = vec![0; samples.len()];
+        
+        let mut residual_shift = 0;
+        let mut rev_qlp_coefs: Vec<_> = qlp_coefs.iter().rev().cloned().collect();
+        
+        for i in (predictor_order as usize)..samples.len() as usize {
+            let mut dot_result = 0;
+            for i in 0..(rev_qlp_coefs.len() as i64) {
+                dot_result += &rev_qlp_coefs[i as usize] * &samples[residual_shift..(qlp_coefs.len() + residual_shift)].to_vec()[i as usize];
+            }
+            
+            residuals[i] = samples[i] - (dot_result >> qlp_shift);
+            residual_shift += 1;
+        }
+        
+        let residual = residuals[(predictor_order as usize)..].to_vec();
+        residual
     }
 
     /// compute the quantized LPC coefficients, precision, and shift for the given
@@ -227,25 +243,6 @@ mod tests {
         assert_eq!(out_vec_ans, out_vec);
     }
 
-    #[test]
-    fn test_get_predictor_coeffs() {
-        // Test input data (autocorrelation coefficients)
-        let autoc = vec![24710.0, 18051.0, 7050.0, 632.0];
-        let predictor_order = 3;
-
-        // Expected result (adjusted)
-        let expected_result = vec![1.27123, -0.85145, 0.28488];
-
-        // Call the function
-        let predictor_coeffs = get_predictor_coeffs(&autoc, predictor_order);
-
-        // Compare with expected result
-        assert_eq!(predictor_coeffs.len(), expected_result.len());
-        for i in 0..predictor_coeffs.len() {
-            assert_f64_near!(predictor_coeffs[i], expected_result[i], 5);
-        }
-    }
-
     // https://docs.rs/assert_float_eq/latest/assert_float_eq/macro.assert_f64_near.html
     // ^ Reference Implementation
     macro_rules! assert_f64_near {
@@ -257,5 +254,24 @@ mod tests {
         }};
         // No explicit steps, use default.
         ($a:expr, $b:expr) => (assert_f64_near!($a, $b, 4));
+    }
+
+    #[test]
+    fn test_get_predictor_coeffs() {
+        // Test input data (autocorrelation coefficients)
+        let autoc = vec![24710.0, 18051.0, 7050.0, 632.0];
+        let predictor_order = 3;
+
+        // Expected result (adjusted)
+        let expected_result = vec![1.27123, -0.85145, 0.28488];
+
+        // Call the function
+        let predictor_coeffs = VarPredictor::get_predictor_coeffs(&autoc, predictor_order);
+
+        // Compare with expected result
+        assert_eq!(predictor_coeffs.len(), expected_result.len());
+        for i in 0..predictor_coeffs.len() {
+            assert_f64_near!(predictor_coeffs[i], expected_result[i], 5);
+        }
     }
 }
