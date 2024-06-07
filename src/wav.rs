@@ -339,10 +339,6 @@ impl WaveReader {
     /// Returns a `WaveReaderError` with the appropriate error if something
     /// happens. This includes file read errors and format errors.
     fn read_data_chunk(start_pos: u64, fmt_info: &PCMWaveFormatChunk, mut fh: File) -> Result <PCMWaveDataChunk, WaveReaderError> {
-        //todo!();
-        // What's left to do?
-
-        
         // === [START] PARSE DETAILS FROM OTHER OBJECTS ===
         let bitdepth = fmt_info.bps;
         let numchs = fmt_info.samp_rate;
@@ -370,14 +366,37 @@ impl WaveReader {
 
         // === [START] Number of Samples (computed) ===
         // let number_of_samples = (data_dsubchunksize << 8)/(numchs * bitdepth);
+        // to_do(ADD THIS SEGMENT TO THE IMPL)
         // === [END] of Number of Samples (computed) ===
 
 
         // === [START] (Experimental) Audio Data ===
-        let mut data_buff_audio = [[0u8; 2]; 38956]; // fixed amount for now, but it should be a variable
+        //let mut data_buff_audio = [[0u8; 2]; 38956]; // fixed amount for now, but it should be a variable
         // === [END] Audio Data ===        
 
-    
+
+        // == Implementation ==
+        let mut audio_data_header = [0u8; 8];
+        fh.read_exact(&mut audio_data_header).map_err(|_| WaveReaderError::ReadError)?;
+        let data_read = String::from_utf8_lossy(&audio_data_header[0..4]).to_string();
+        let data_magic_string = "data".to_string();
+
+        if data_read != data_magic_string {
+            return Err(WaveReaderError::ChunkTypeError);
+        }
+
+        let audio_size = LittleEndian::read_u32(&audio_data_header[4..8]);
+        if audio_size % fmt_info.block_align() as u32 != 0 {
+            return Err(WaveReaderError::DataAlignmentError);
+        }
+
+        let audio_stream = BufReader::new({
+            fh.seek(SeekFrom::Start(start_pos + 8))?;
+            fh
+        });
+        // === End of Implementation ===
+
+
         // === [DEBUG ONLY] PRINT EACH SUBCHUNK ===
         println!("[12] data magic string: {data_magic:#10x} - (0x64617461)");
         println!("[13] DSubchunk Size: {data_dsubchunksize:#10}");
@@ -385,31 +404,10 @@ impl WaveReader {
         println!("[15] No audio data representation yet");
         // === [END OF DEBUG] ===
 
-        // == Implementation ==
-        let mut data_header = [0u8; 8];
-        fh.read_exact(&mut data_header).map_err(|_| WaveReaderError::ReadError)?;
-        let data_tag = String::from_utf8_lossy(&data_header[0..4]).to_string();
-
-        if data_tag.as_str() != "data" {
-            return Err(WaveReaderError::ChunkTypeError);
-        }
-
-        let data_size = LittleEndian::read_u32(&data_header[4..8]);
-
-
-        if data_size % fmt_info.block_align() as u32 != 0 {
-            return Err(WaveReaderError::DataAlignmentError);
-        }
-
-        let data_buf = BufReader::new({
-            fh.seek(SeekFrom::Start(start_pos + 8))?;
-            fh
-        });
-
         return Ok(PCMWaveDataChunk{
-            size_bytes: data_size,
+            size_bytes: audio_size,
             format: *fmt_info,
-            data_buf: data_buf,
+            data_buf: audio_stream,
         })
     }
 }
@@ -454,7 +452,7 @@ impl PCMWaveFormatChunk {
         let num_channels = self.num_channels as u32;
         let bps = self.bps as u32;
 
-        (samp_rate * num_channels * bps) / 8
+        return (samp_rate * num_channels * bps) / 8
     }
 
     /// Get or calculate the block alignment of this PCM WAV file
@@ -466,7 +464,7 @@ impl PCMWaveFormatChunk {
         let num_channels = self.num_channels;
         let bytes_per_sample = self.bps / 8;
 
-        (num_channels * bytes_per_sample) as u16
+        return (num_channels * bytes_per_sample) as u16
     }
 }
 
@@ -475,7 +473,7 @@ impl Iterator for PCMWaveDataChunk {
 
     fn next(&mut self) -> Option <Self::Item> {
         let num_channels = self.format.num_channels as usize;
-        let mut  chunks = Vec::new();
+        let mut chunks = Vec::new();
 
         for _ in 0..num_channels {
             let bps = self.format.bps as usize / 8;
@@ -523,10 +521,11 @@ impl PCMWaveDataChunk {
     /// This method is used to get a *single* inter-channel
     /// sample from a data chunk.
     pub fn chunks_byte_rate(self) -> PCMWaveDataChunkWindow {
-        PCMWaveDataChunkWindow {
+        let grab_data_chunk = PCMWaveDataChunkWindow {
             chunk_size: self.format.byte_rate() as usize,
             data_chunk: self
-        }
+        };
+        return grab_data_chunk;
     }
 
     /// Consume a data chunk and get an iterator
