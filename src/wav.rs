@@ -9,6 +9,8 @@ use byteorder::{ByteOrder, LittleEndian, LE};
 // THIS VERSION OF WAV ONLY SUPPORTS RIFF, RIFX SUPPORT TO BE ADDED LATER
 // ===== !!!!!!!!! =====
 
+// CHARLIE VERSION, ALMOST READY FOR PRODUCTION
+
 // ===== OUTSIDE OF TEMPLATE ADDITIONS ===
 //#[derive()]
 //enum Result {
@@ -124,9 +126,6 @@ impl WaveReader {
                 data_chunks: data_chunks
             }
         )
-        //=== THIS CALLS THE OTHER FUNCTIONS BELOW ===
-        //=== will return to this later! ===
-
     }
 
     /// Read the RIFF header from a PCM WAV file
@@ -139,20 +138,14 @@ impl WaveReader {
     /// Returns a `WaveReaderError` with the appropriate error if something
     /// happens. This includes file read errors and format errors.
     fn read_riff_chunk(fh: &mut File) -> Result <RiffChunk, WaveReaderError> {
-        // todo!();
-        // What's left to do?
-        // 1.) Address the RIFF and RIFX issue
-        // 2.) Address is_big_endian
-        // 3.) Error handling not yet started
-        // 4.) Unsure pa yung file size if it's accurate in terms of bit arrangements and all that
-        // [OPTIONAL] interpret magic string WAVE (ASCII ata or UTF-8???)
-        
         let wav_file = fh; // as per the specfications; fh is an argument to this function
 
-        let mut riff_chunk = RiffChunk{
+
+        let mut riff_chunk = RiffChunk{ // instantiate a RiffChunk object to be returned (when no errors encountered)
             file_size: 0,
             is_big_endian: false,
         };
+
 
         // === [START] BUFFER DATA ===
         let mut riff_buff_fx = [0u8; 4];
@@ -164,10 +157,15 @@ impl WaveReader {
         wav_file.read_exact(&mut riff_buff_magic_wave);
         // === [END] OF BUFFER DATA SECTION ===
 
+
+        // === [START] CONVERT STRINGS TO MAGIC STRINGS FOR COMPARISON ===
         let riff = "RIFF".to_string();
         let rifx = "RIFX".to_string();
         let wave = "WAVE".to_string();
+        // === [END] Converting strings to magic strings ===
 
+
+        // === [START] CHECK IF RIFF OR RIFX AND POPULATE RESPECTIVE ARRAYS ===
         let riff_wav_magic_fx = String::from_utf8_lossy(&riff_buff_fx);
         let mut riff_wav_magic_wave = 0u32;
 
@@ -183,61 +181,19 @@ impl WaveReader {
         else{
             return Err(WaveReaderError::NotRiffError)
         }
+        // === [END] Checking if RIFF or RIFX ===
 
-        // Check for "WAVE" string
+
+        // === [START] CHECK FOR "WAVE" ===
         let wave_bytes: [u8; 4] = [0x57, 0x41, 0x56, 0x45]; // ASCII representation of "WAVE"
         if riff_buff_magic_wave == wave_bytes {
             return Ok(riff_chunk);
         } else {
             return Err(WaveReaderError::NotWaveError);
         }
+        // === [END] CHECKING FOR "wAVE" ===
 
-
-        // // === [START] RIFF/RIFX CHUNK READER ===
-        // let mut riff_wav_magic_fx = String::from_utf8_lossy(&riff_buff_fx).to_string();
-        // let mut endianness:bool = false;
-        // let mut riff_wav_file_size = 0u32;
-
-        // if riff_wav_magic_fx == "RIFF".to_string(){
-        //     let riff_wav_file_size = u32::from_le_bytes(riff_buff_file_size);
-        //     let endianness = false;
-        // }
-        // else if riff_wav_magic_fx == "RIFX".to_string(){
-        //     let riff_wav_file_size = u32::from_be_bytes(riff_buff_file_size);
-        //     let endianness = true;
-        // }
-        // else{
-        //     return Err(WaveReaderError::NotRiffError);
-        // }
-        // // === [END] OF RIFF/RIFX CHUNK READER ===
-
-        // // === [START] MAGIC WAVE STRING READER ===
-        // let mut riff_wav_magic_wave = "";
         
-        // if endianness == false{
-        //     let riff_wav_magic_wave_raw = u32::from_le_bytes(riff_buff_magic_wave);
-        //     let riff_wav_magic_wave = String::from_utf8_lossy(&riff_buff_file_size);
-        // }
-        // else if endianness == true{
-        //     let riff_wav_magic_wave_raw = u32::from_be_bytes(riff_buff_magic_wave);
-        //     let riff_wav_magic_wave = String::from_utf8_lossy(&riff_buff_magic_wave);
-        // }  
-        // else{
-        //     return Err(WaveReaderError::NotWaveError)
-        // }
-
-        // //let riff_wav_magic_wave = String::from_utf8_lossy(&riff_buff_magic_wave); // magic string WAVE (RIFF)
-        // if riff_wav_magic_wave == "WAVE".to_string(){
-        //     return Ok(RiffChunk{
-        //         file_size: riff_wav_file_size,
-        //         is_big_endian: endianness
-        //     })
-        // }
-        // else{
-        //     return Err(WaveReaderError::NotWaveError);
-        // }
-        // // === [END] OF MAGIC WAVE STRING READER ===
-
         // === [DEBUG ONLY] PRINT EACH SUBCHUNK ===
         println!("[1] RIFF/RIFX: {riff_wav_magic_fx}");
         //println!("[2] File size: {riff_wav_file_size:#10} bytes");
@@ -254,11 +210,7 @@ impl WaveReader {
     /// Returns a `WaveReaderError` with the appropriate error if something
     /// happens. This includes file read errors and format errors.
     fn read_fmt_chunk(fh: &mut File) -> Result <PCMWaveFormatChunk, WaveReaderError> {
-        //todo!();
-        // What's left to do?
-
         let wav_file = fh; // same as from read_riff_chunk
-
 
         // === [START] BUFFER DATA ===
         let mut fmthead_buff_fmt_magic = [0u8; 4];
@@ -299,7 +251,6 @@ impl WaveReader {
 
 
         // === [START] AudioFmt READER ===
-        //let fmthead_audiofmt = u32::from_le_bytes(fmthead_buff_audiofmt); // always little endian(?)
         let mut fmthead_audiofmt = 0u32;
         for k in 0..2{
             fmthead_audiofmt += fmthead_buff_audiofmt[k] as u32;
@@ -322,18 +273,6 @@ impl WaveReader {
             fmthead_blockalign += fmthead_buff_blockalign[m] as u32;
         }
         // === [END] OF Block Align Reader ===
-
-
-        // === [DEBUG ONLY] PRINTING THE CHUNKS ===
-        println!("[4] fmt_ magic string: {fmthead_fmt_magic:#10x} - (magic string should be 0x666d7420)");
-        println!("[5] FSubchunkSize: {fmthead_fsubchunksize:#10x} - (fixed value is 16 or 0x00000010)");
-        println!("[6] AudioFmt: {fmthead_audiofmt:#06x} - (fixed value is 1 or 0x0001)");
-        // println!("[7] Number of Channels: {fmthead_numchs:#1} - (1 for mono, 2 for stereo)");
-        // println!("[8] Sample Rate: {fmthead_samplerate:#10} Hz");
-        println!("[9] Byte Rate: {fmthead_byterate:#10}");
-        println!("[10] Block Alignment: {fmthead_blockalign:#10} bytes");
-        // println!("[11] Bit Depth: {fmthead_bitdepth:#10} bits-per-sample (size of the sample)");
-        // === [END OF DEBUG] ===
 
 
         // === [START] Numchs READER ===
@@ -359,11 +298,33 @@ impl WaveReader {
         }
         // === [END] OF BIT DEPTH READER ===
 
-        Ok(PCMWaveFormatChunk{
+
+        let fmt_magic = "fmt ".to_string();
+        let fmt_to_check = String::from_utf8_lossy(&fmthead_buff_fmt_magic);
+        let mut fmt_chunk = PCMWaveFormatChunk{
             num_channels: fmthead_numchs,
             samp_rate: fmthead_samplerate,
             bps: fmthead_bitdepth,
-        })
+        };
+
+        if fmt_to_check == fmt_magic{
+            return Ok(fmt_chunk);
+        }
+        else{
+            return Err(WaveReaderError::ChunkTypeError);
+        }
+
+        
+        // === [DEBUG ONLY] PRINTING THE CHUNKS ===
+        println!("[4] fmt_ magic string: {fmthead_fmt_magic:#10x} - (magic string should be 0x666d7420)");
+        println!("[5] FSubchunkSize: {fmthead_fsubchunksize:#10x} - (fixed value is 16 or 0x00000010)");
+        println!("[6] AudioFmt: {fmthead_audiofmt:#06x} - (fixed value is 1 or 0x0001)");
+        // println!("[7] Number of Channels: {fmthead_numchs:#1} - (1 for mono, 2 for stereo)");
+        // println!("[8] Sample Rate: {fmthead_samplerate:#10} Hz");
+        println!("[9] Byte Rate: {fmthead_byterate:#10}");
+        println!("[10] Block Alignment: {fmthead_blockalign:#10} bytes");
+        // println!("[11] Bit Depth: {fmthead_bitdepth:#10} bits-per-sample (size of the sample)");
+        // === [END OF DEBUG] ===        
     }
 
     /// Read the data chunk from a PCM WAV file
