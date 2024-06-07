@@ -1,5 +1,5 @@
 use std::ops::{Shl, Shr};
-use crate::flac::bitstream;
+// use crate::flac::bitstream;
 
 /// Represents a Rice encoder
 ///
@@ -247,72 +247,62 @@ impl RiceEncoderOptions {
     /// Note that the contents are _not_ ensured to be byte-aligned. Hence, this method returns
     /// the Rice-encoded byte vector containing the number of extra unused bits at the last element.
     pub fn encode(rice_param: u8, residuals: &Vec<i64>) -> RiceEncodedStream {
-        let zigzag_residuals: Vec<u64> = residuals.iter().map(|&num| RiceEncoderOptions::zigzag(num)).collect();
+        let mut bit_buffer: u64 = 0;
+        let mut bit_count: u8 = 0;
         let mut stream = Vec::new();
-
-        println!("{:?}", zigzag_residuals);
-        
-        for &residual in &zigzag_residuals {
-            stream.push(Self::encode_residual(residual, rice_param));
+    
+        for &residual in residuals {
+            let zigzag_res = Self::zigzag(residual);
+            let (encoded_bits, num_bits) = Self::encode_residual(zigzag_res, rice_param);
+            bit_buffer |= (encoded_bits as u64) << bit_count;
+            bit_count += num_bits;
+    
+            while bit_count >= 8 {
+                stream.push((bit_buffer & 0xFF) as u8);
+                bit_buffer >>= 8;
+                bit_count -= 8;
+            }
         }
-
+    
+        if bit_count > 0 {
+            stream.push(bit_buffer as u8);
+        }
+    
         RiceEncodedStream {
             stream: stream,
             param: rice_param,
-            extra_bits_len: 0,
+            extra_bits_len: bit_count,
         }
     }
-
-    pub fn encode_residual(residual: u64, rice_param: u8) -> u8 {
+    
+    pub fn encode_residual(residual: u64, rice_param: u8) -> (u64, u8) {
         fn min_bits_required(num: u8) -> u64 {
             if num == 0 {
                 return 1;
             }
-            
+    
             let mut count = 0;
             let mut n = num as u64;
-            
+    
             while n != 0 {
                 count += 1;
                 n >>= 1;
             }
-            
+    
             count
         }
-        
-        fn unary_to_u64(unary_code: &str) -> u64 {
-            let mut count = 0;
-            let mut max_count = 0;
-        
-            for c in unary_code.chars() {
-                if c == '1' {
-                    count += 1;
-                } else {
-                    max_count = max_count.max(count);
-                    count = 0;
-                }
-            }
-        
-            max_count
-        }
-
+    
         // Calculate K, U, and B
         let K: u64 = min_bits_required(rice_param);
-        let mut u = residual >> K;
-        let B = residual & ((rice_param - 1) as u64);
+        let u = residual >> K;
+        let B = residual & ((1 << K) - 1);
     
-        let mut unary_code = String::new();
-        for _ in 0..=u {
-            unary_code.push('1');
-        }
-        unary_code.push('0');
-        
-        let U = unary_to_u64(&unary_code);
-        // Concatenate unary and binary codes
+        let unary_code_len = u + 1; // unary representation length
+        let U = unary_code_len as u64;
         let result = (U << K) | B;
+        let total_bits = unary_code_len + K; // total bits
     
-        println!("U: {}, B: {}, K: {}, Result: {}", U, B, K, result);
-        result as u8
+        (result, total_bits as u8)
     }
 
 
@@ -330,8 +320,26 @@ impl RiceEncoderOptions {
     /// Note that each of the contents are _not_ ensured to be byte-aligned. Hence, this method
     /// returns the Rice-encoded byte stream and the number of extra unused bits at the last byte
     /// of the stream, respectively.
-    pub fn encode_by_partition(&self, residuals: &Vec <i64>)  -> (Vec <RiceEncodedStream>, u8) {
-        todo!()
+    pub fn encode_by_partition(&self, residuals: &Vec<i64>) -> (Vec<RiceEncodedStream>, u8) {
+        let (best_params, best_partition_order) = self.best_partition_and_params(residuals);
+        let num_partitions = 1 << best_partition_order;
+
+        let mut partitions = vec![Vec::new(); num_partitions as usize];
+        let partition_size = self.num_samples as usize / num_partitions as usize;
+
+        for (i, &residual) in residuals.iter().enumerate() {
+            let partition_index = i / partition_size;
+            partitions[partition_index].push(residual);
+        }
+
+        let mut encoded_partitions = Vec::new();
+
+        for (partition, &param) in partitions.iter().zip(&best_params) {
+            let encoded_stream = Self::encode(param, partition);
+            encoded_partitions.push(encoded_stream);
+        }
+
+        (encoded_partitions, best_partition_order)
     }
 
     /// Convert an integer into its zigzag encoding. With this encoding, all
