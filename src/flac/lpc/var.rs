@@ -173,8 +173,33 @@ impl VarPredictor {
     /// 
     /// This function selects the best predictor order by finding the order that yields the
     /// absolute minimum sum of residuals. Note that the maximmum predictor order is 32.
-    pub fn get_best_lpc(samples: &Vec <i64>, bps: u8, block_size: u64) -> (Vec <i64>, u8, u8) {
-        todo!()
+    pub fn get_best_lpc(samples: &Vec<i64>, bps: u8, block_size: u64) -> (Vec<i64>, u8, u8) {
+        let max_predictor_order = 32;
+        let mut best_order = 0;
+        let mut best_residual_sum = f64::INFINITY;
+        let mut best_quantized_coefs = Vec::new();
+        let mut best_precision = 0;
+        let mut best_shift = 0;
+
+        for order in 1..=max_predictor_order {
+            let autocorrelation = VarPredictor::get_autocorrelation(samples, order);
+            let predictor_coefs = VarPredictor::get_predictor_coeffs(&autocorrelation, order);
+            let precision = VarPredictor::get_best_precision(bps, block_size);
+            let (quantized_coefs, shift) = VarPredictor::quantize_coeffs(&predictor_coefs, precision);
+
+            let residuals = VarPredictor::get_residuals(samples, &quantized_coefs, order, shift);
+            let residual_sum: f64 = residuals.iter().map(|&x| (x as f64).abs()).sum();
+
+            if residual_sum < best_residual_sum {
+                best_residual_sum = residual_sum;
+                best_order = order;
+                best_quantized_coefs = quantized_coefs;
+                best_precision = precision;
+                best_shift = shift;
+            }
+        }
+
+        (best_quantized_coefs, best_precision, best_shift)
     }
 
     /// Get the best coefficient precision
