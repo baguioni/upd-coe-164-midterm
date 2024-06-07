@@ -1,5 +1,3 @@
-use std::f64;
-
 pub struct VarPredictor;
 
 impl VarPredictor {
@@ -39,36 +37,28 @@ impl VarPredictor {
     /// ^ Reference Implementation
     pub fn get_predictor_coeffs(autoc: &Vec<f64>, predictor_order: u8) -> Vec<f64> {
         let mut lpc: Vec<f64> = vec![0.0; predictor_order as usize];
-        let mut err = autoc[0];
+        let mut err: f64 = autoc[0];
     
-        for i in 0..predictor_order {
+        for i in 0..predictor_order as usize {
             // Sum up this iteration's reflection coefficient.
-            let mut r = -autoc[(i + 1) as usize];
+            let mut r = autoc[(i + 1)];
             for j in 0..i {
-                r -= lpc[j as usize] * autoc[(i - j) as usize];
+                r -= lpc[j] * autoc[(i - j)];
             }
             r /= err;
-    
-            // Update LPC coefficients and total error.
-            lpc[i as usize] = r;
-    
-            for j in 0..(i >> 1) {
-                let tmp = lpc[j as usize];
-                lpc[j as usize] += r * lpc[(i - 1 - j) as usize];
-                lpc[(i - 1 - j) as usize] += r * tmp;
+            
+            let mut lpc_clone = lpc.clone();
+            
+            for j in 0..i {
+                lpc_clone[j] -= r * lpc[i - j - 1];
             }
-            if i & 1 == 1 {
-                lpc[(i >> 1) as usize] += lpc[(i >> 1) as usize] * r;
-            }
+            
+            lpc_clone[i] = r;
     
+            lpc = lpc_clone;
             err *= 1.0 - r * r;
         }
-    
-        // negate FIR filter coeff to get predictor coeff
-        for coeff in lpc.iter_mut() {
-            *coeff = -*coeff;
-        }
-    
+
         lpc
     }
 
@@ -78,7 +68,15 @@ impl VarPredictor {
     /// for predictor order `i + 1`. The Levinson-Durbin algorithm is used to progressively
     /// compute the LPC coefficients across multiple predictor orders.
     fn build_predictor_coeffs(autoc: &Vec <f64>, max_predictor_order: u8) -> Vec <Vec <f64>> {
-        todo!()
+        let mut lpc_list : Vec<Vec<f64>> = Vec::new();
+        for i in 0..=max_predictor_order {
+            let lpc_element = VarPredictor::get_predictor_coeffs(autoc, i);
+            lpc_list.push(lpc_element);
+        }
+        
+        lpc_list.retain(|v| !v.is_empty());
+
+        lpc_list
     }
 
     /// Quantize the predictor coefficients and find their shift factor
@@ -99,8 +97,12 @@ impl VarPredictor {
     /// The new rounding error `\epsilon = L_i_r + \epsilon - round(L_i_r)` is then updated for the
     /// next coefficient.
     pub fn quantize_coeffs(lpc_coefs: &Vec<f64>, mut precision: u8) -> (Vec<i64>, u8) {
+        use std::f64;
+    
+        // Step 1: Compute L_max
         let l_max = lpc_coefs.iter().cloned().fold(f64::MIN, f64::max).abs();
     
+        // Step 2: Determine shift factor S
         let lg_l_max = l_max.log2();
         let s = if precision as f64 - lg_l_max < 0.0 {
             0
@@ -108,6 +110,7 @@ impl VarPredictor {
             (precision as f64 - lg_l_max).floor() as i8
         }.min(31).max(-31) as u8;
     
+        // Step 3: Quantize the coefficients
         let shift_value = if s > 0 { 1 << s } else { 1 };
         let mut quantized_coefs = Vec::with_capacity(lpc_coefs.len());
         let mut epsilon = 0.0;
@@ -138,7 +141,8 @@ impl VarPredictor {
         let mut residuals: Vec <i64> = vec![0; samples.len()];
         
         let mut residual_shift = 0;
-        let mut rev_qlp_coefs: Vec<_> = qlp_coefs.iter().rev().cloned().collect();
+        let rev_qlp_coefs: Vec<_> = qlp_coefs.iter().rev().cloned().collect();
+        
         
         for i in (predictor_order as usize)..samples.len() as usize {
             let mut dot_result = 0;
@@ -149,7 +153,6 @@ impl VarPredictor {
             residuals[i] = samples[i] - (dot_result >> qlp_shift);
             residual_shift += 1;
         }
-        
         let residual = residuals[(predictor_order as usize)..].to_vec();
         residual
     }
@@ -157,7 +160,12 @@ impl VarPredictor {
     /// compute the quantized LPC coefficients, precision, and shift for the given
     /// predictor order
     pub fn get_predictor_coeffs_from_samples(samples: &Vec <i64>, predictor_order: u8, bps: u8, block_size: u64) -> (Vec <i64>, u8, u8) {
-        todo!()
+        let autocorrelation: Vec<f64> = VarPredictor::get_autocorrelation(samples, predictor_order);
+        let predictor_coefs: Vec<f64> = VarPredictor::get_predictor_coeffs(&autocorrelation, predictor_order);
+        let best_precision: u8 = VarPredictor::get_best_precision(bps, block_size);
+        let quantized_coefs: (Vec<i64>, u8) = VarPredictor::quantize_coeffs(&predictor_coefs, best_precision);
+        
+        (quantized_coefs.0, best_precision, quantized_coefs.1)
     }
 
     /// Get the quantized LPC coefficients, precision, and shift for the best predictor order
@@ -240,35 +248,40 @@ mod tests {
         assert_eq!(out_vec_ans, out_vec);
     }
 
-    // https://docs.rs/assert_float_eq/latest/assert_float_eq/macro.assert_f64_near.html
-    // ^ Reference Implementation
-    macro_rules! assert_f64_near {
-        // Explicit steps.
-        ($a:expr, $b:expr, $n:expr) => {{
-            let (a, b, n) = ($a, $b, $n);
-            let r = (a - b).abs() < 10f64.powi(-n);
-            assert!(r, "{} is not approximately equal to {} with precision {}", a, b, n);
-        }};
-        // No explicit steps, use default.
-        ($a:expr, $b:expr) => (assert_f64_near!($a, $b, 4));
+    #[test]
+    fn sample_autocorrelation() {
+        let in_vec = vec![32, 84, 192, 78, 61];
+        let out_vec = VarPredictor::get_autocorrelation(&in_vec, 4);
+        assert_eq!(out_vec, vec![54749.0, 38550.0, 24408.0, 7620.0, 1952.0]);
+    }
+    
+    #[test]
+    fn sample_get_predictor_coefs() {
+        let in_vec = vec![32.0, 84.0, 192.0, 78.0, 61.0];
+        let out_vec = VarPredictor::get_predictor_coeffs(&vec![54749.0, 38550.0, 24408.0, 7620.0, 1952.0], 4);
+        assert_eq!(out_vec, vec![0.7903804482322525, 0.09395406942446108, -0.39168694991013925, 0.15955728829739096]);
     }
 
     #[test]
-    fn test_get_predictor_coeffs() {
-        // Test input data (autocorrelation coefficients)
-        let autoc = vec![24710.0, 18051.0, 7050.0, 632.0];
-        let predictor_order = 3;
+    fn sample_build_predictor_coefs() {
+        let in_vec = vec![32, 84, 192, 78, 61];
+        let autoc = VarPredictor::get_autocorrelation(&in_vec, 4);
+        let out_vec = VarPredictor::build_predictor_coeffs(&autoc, 4);
+        assert_eq!(out_vec, vec![vec![0.7041224497251092], vec![0.7739075411204036, -0.09910931177175031], 
+            vec![0.7468988870582981, 0.11179116448535134, -0.2725137888587779], 
+            vec![0.7903804482322525, 0.09395406942446108, -0.39168694991013925, 0.15955728829739096]]);
+    }
 
-        // Expected result (adjusted)
-        let expected_result = vec![1.27123, -0.85145, 0.28488];
+    #[test]
+    fn sample_quantize_coefs() {
+        let lpc = vec![0.7903804482322525, 0.09395406942446108, -0.39168694991013925, 0.15955728829739096];
+        let out = VarPredictor::quantize_coeffs(&lpc, 4);
+        assert_eq!(out, (vec![13, 1, -6, 2], 4));
+    }
 
-        // Call the function
-        let predictor_coeffs = VarPredictor::get_predictor_coeffs(&autoc, predictor_order);
-
-        // Compare with expected result
-        assert_eq!(predictor_coeffs.len(), expected_result.len());
-        for i in 0..predictor_coeffs.len() {
-            assert_f64_near!(predictor_coeffs[i], expected_result[i], 5);
-        }
+    #[test]
+    fn sample_get_best_precision() {
+        let out = VarPredictor::get_best_precision(23, 9879);
+        assert_eq!(out, 14);
     }
 }
